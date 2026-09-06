@@ -204,26 +204,6 @@ docker compose --profile viz up  # adds rviz2
 docker compose --profile dev up  # live-mounts the source over the image
 ```
 
-## 🧪 Testing
-
-Every package carries a test tier, run through `colcon`:
-
-```bash
-cd ~/ros2_ws
-colcon test --packages-up-to dec_launch
-colcon test-result --verbose
-```
-
-The suite covers three kinds of test:
-
-- **Linters** — `ament_lint_auto` across all packages; `ament_flake8`/`ament_pep257`/`ament_copyright` on the Python packages, `xmllint` on the BT mission XML
-- **Unit tests** — gtest on the pure-logic C++ helpers (gesture kinematics, behavior-controller utilities, ByteTracker, Boolean Map Saliency, animate-behavior motion math, age/gender temporal smoothing, YOLO class indices); pytest on the Python helpers (response parsing, audio helpers, denoiser, localization geometry)
-- **Launch tests** — lifecycle bring-up and bag replay. The bag-replay test self-skips when the ONNX weights are absent, which is the case in CI.
-
-`text_to_speech/manual_tests/` holds scripts that need real hardware and are **not** part of `colcon test`.
-
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the full clone → `rosdep` → `colcon build` → `colcon test` chain on `ros:humble-perception-jammy` for every push and PR to `main` and `cpp`.
-
 ## 📊 Package Details
 
 ### **Face Detection System**
@@ -247,21 +227,6 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the full clone 
 - **Path Planning**: Nav2 with 3D voxel costmaps consuming the L2's 360° `PointCloud2` directly, no flattening step
 - **Safety**: An independent collision monitor gates every velocity command straight off the lidar, bypassing the costmaps
 - **Integration**: Full coordination with the behavior controller
-
-## 🔧 Development
-
-### Adding New Features
-1. Create new package in the repo root directory
-2. Follow ROS2 package structure conventions
-3. Define interfaces in `dec_interfaces` if needed
-4. Add a `test/` tier and wire it into `CMakeLists.txt`/`setup.py` so CI picks it up
-5. Update `dec_launch` launch files and `dec_launch/package.xml` exec depends
-
-### Code Style
-- Follow ROS2 C++ and Python style guides
-- Use descriptive variable names with underscores
-- Headers use `#pragma once`; production code logs through ROS2 logging, never `print()`
-- Update package README.md files
 
 ## 📚 Documentation
 

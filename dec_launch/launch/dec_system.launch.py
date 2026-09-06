@@ -23,10 +23,10 @@ gate, the largest 49.72 m and growing over the run; the new one had 0 steps over
 0.30 m with a 4.5 cm maximum.
 
 NOT YET RUN ON THE ROBOT -- everything measured is bag replay. If it misbehaves
-live, nav_profile:=fastlio_loc is the way back. Each of the `nav_profile` Nav2 bringups except `legacy`
-already nests its own localization, so it is launched standalone
-here only when navigation is off -- launching it twice would fight over the
-`map -> odom` transform.
+live, nav_profile:=fastlio_loc is the way back. Each of the `nav_profile` Nav2
+bringups except `legacy` already nests its own localization, so it is launched
+standalone here only when navigation is off -- launching it twice would fight
+over the `map -> odom` transform.
 """
 import os
 from launch import LaunchDescription

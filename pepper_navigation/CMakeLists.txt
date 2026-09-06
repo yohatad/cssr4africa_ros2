@@ -118,7 +118,7 @@ install(CODE [[
   else()
     message(STATUS "config/ symlink failed -- copying instead")
     file(COPY "${_cfg_src}/" DESTINATION "${_cfg_dst}"
-         FILES_MATCHING PATTERN "*.yaml")
+      FILES_MATCHING PATTERN "*.yaml")
   endif()
 ]])
 

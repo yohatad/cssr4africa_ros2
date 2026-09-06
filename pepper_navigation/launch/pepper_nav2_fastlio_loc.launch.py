@@ -9,7 +9,7 @@
 # No Open3D, no RTAB-Map, no PGO at runtime -- the lightest localization stack
 # (see the Jetson CPU-budget discussion).
 #
-# Frames:  map --(transform_fusion)--> odom --(lio_map_odom_bridge)-->
+# Frames:  map --(transform_fusion)--> odom --(lio_odom_bridge)-->
 #          base_footprint --(pepper_sensor_tf, static)--> l2lidar_frame_imu / cams
 # The local costmap rolls in 'odom'; the global costmap and map_server in 'map'.
 #
@@ -63,19 +63,31 @@ def generate_launch_description():
         description='Use bag/simulation clock instead of wall time.')
     declare_map_pcd_cmd = DeclareLaunchArgument(
         'map_pcd',
-        default_value=os.path.join(pkg_share, 'map', 'pepper_map_lc.pcd'),
+        default_value=os.path.join(pkg_share, 'pcd', 'pepper_map_lc.pcd'),
         description='Prior 3D .pcd map that lio_localization registers against. '
-                    'Now shipped in this package (map/) alongside the 2D grid, so '
-                    'the pair cannot drift apart. /pgo_batch_optimize writes it '
-                    'there directly (fastlio_lc_pgo map_pcd_path). MUST come from '
-                    'the same mapping run as map and keyframe_poses.')
+                    'Shipped in this package (pcd/, separate from the 2D grid in '
+                    'map/), so /pgo_batch_optimize writes it directly '
+                    '(fastlio_lc_pgo map_pcd_path). MUST come from the same '
+                    'mapping run as map and keyframe_poses.')
     declare_map_cmd = DeclareLaunchArgument(
         'map',
-        default_value=os.path.join(pkg_share, 'map', 'pepper_map_lc_clean_0826.yaml'),
+        default_value=os.path.join(pkg_share, 'map', 'pepper_map_lc.yaml'),
         description='2D occupancy grid (the projection of the same environment as '
                     'map_pcd) served as /map for the global costmap static layer. '
-                    'Defaults to the copy shipped in this package (map/). MUST '
-                    'exist, or the lifecycle manager aborts the whole bringup.')
+                    'Defaults to the copy shipped in this package (map/), which '
+                    'MUST be from the SAME run as map_pcd/keyframe_poses. '
+                    'pepper_map_lc.pgm/.yaml, pcd/pepper_map_lc.pcd and '
+                    'pcd/pepper_map_lc_poses.txt are ONE set: same bag '
+                    '(slam_20260823_aligned), same PGO run, and rotated together '
+                    'by utils/align_map.py, so they share a frame by construction '
+                    'rather than by coincidence. Every other grid here belongs to '
+                    'an older run and is NOT paired with the current .pcd -- do '
+                    'not default to one without re-deriving map_pcd and '
+                    'keyframe_poses to match. Checking is cheap: every keyframe '
+                    'pose should have prior-map points around it (it was measured '
+                    'at 100%% for this set, 86.6%% for a mismatched pair). '
+                    'MUST exist, or the lifecycle manager aborts the whole '
+                    'bringup.')
     # localization_th was declared here and forwarded to
     # fastlio_localization_l2.launch.py, which declared it too and never passed
     # it to any node -- so the value did nothing while appearing to work, and
@@ -98,7 +110,7 @@ def generate_launch_description():
     # track lies inside the grid footprint).
     declare_keyframe_poses_cmd = DeclareLaunchArgument(
         'keyframe_poses',
-        default_value=os.path.join(pkg_share, 'map', 'pepper_map_lc_poses.txt'),
+        default_value=os.path.join(pkg_share, 'pcd', 'pepper_map_lc_poses.txt'),
         description='KITTI-format keyframe poses from the SAME mapping run as '
                     'map_pcd, used as candidates for global localization and '
                     '/relocalize. Empty disables both (manual /initialpose only).')

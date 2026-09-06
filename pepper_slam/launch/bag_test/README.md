@@ -83,7 +83,7 @@ subscribes RELIABLE; the others use `SensorDataQoS()` and would match either way
 ## Replaying `/tf` is fine — and you want it
 
 An older version of this file said not to, because the bag's wheel odometry
-would fight `lio_map_odom_bridge` for `base_footprint`'s parent. That stopped
+would fight `lio_odom_bridge` for `base_footprint`'s parent. That stopped
 being true at commit 8edd1f5, which defaulted `publish_wheel_odom_tf` to false
 (`naoqi_driver2/src/converters/joint_state.cpp:89`) for exactly that reason, so
 the edge is never recorded.
@@ -110,12 +110,18 @@ Whether you want it to depends on what the bag already contains:
 
 | bag | pass | why |
 |---|---|---|
-| recorded with `config/record_qos.yaml` | `publisher:=none` | it carries all 14 `/tf_static` transforms itself; a live publisher would duplicate the latched edges and the last one silently wins |
-| `slam_recording*`, `slam_bench_run*` | `scope:=all` | no `/tf_static` at all, so the camera edges must come from calibration or `camera_imu_optical_frame` never resolves |
+| recorded with `config/record_qos.yaml` | nothing — **`publisher:=none` is now the default in every wrapper here** | it carries all 14 `/tf_static` transforms itself; a live publisher would duplicate the latched edges and the last one silently wins |
+| `slam_recording*`, `slam_bench_run*` | `publisher:=urdf scope:=all` | no `/tf_static` at all, so the camera edges must come from calibration or `camera_imu_optical_frame` never resolves. Both are needed now that `none` is the default |
 
-Both are `pepper_sensor_tf.launch.py`'s own arguments and reach it by
-inheritance — a command-line value overrides a declared default further down the
-include tree. `publisher` has no `choices=` restriction and both its nodes are
+Each wrapper **declares** `publisher` with `default_value='none'` rather than
+forwarding it. A declared configuration propagates down the whole include tree
+on its own, so it still reaches `pepper_sensor_tf.launch.py` three levels down,
+and a command-line `publisher:=urdf` still overrides it — verified on a
+three-level test tree. Forwarding it through `launch_arguments` instead would
+shadow the command line, which is the trap the next section describes.
+
+`rtabmap_fused_bag.launch.py` is the deliberate exception: it targets
+`bags/slam_recording`, hardcodes `scope:='all'`, and leaves `publisher` alone. `publisher` has no `choices=` restriction and both its nodes are
 gated on `IfCondition(publisher=='urdf'/'yaml')`, so any other value starts
 neither.
 
@@ -135,5 +141,8 @@ pause/resume keys, and a background job that does so gets SIGTTIN and stops dead
 All of these default to the **RealSense IMU** (`l2_rsimu.yaml` and friends). The
 L2's own gyro cancels rotation about the gravity axis below ~16 deg/s and cost
 139 deg of heading over a 744 s run — see `utils/L2_IMU/REPORT.md`. Pass
-`config_file:=l2.yaml` to A/B against it; the matching `lidar_imu_frame` is
-derived automatically, so you do not have to remember to change it too.
+`config_file:=l2.yaml` to A/B against it — and `lidar_imu_frame:=l2lidar_frame_imu`
+with it. That frame used to be derived from `config_file`; it is now hardcoded to
+`camera_imu_optical_frame` everywhere, since the RealSense IMU is the only
+configuration in use. Pass only `config_file` and the bridge stamps a frame the
+estimator never publishes, so `odom -> base_footprint` never closes.

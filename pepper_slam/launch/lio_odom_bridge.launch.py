@@ -1,29 +1,15 @@
-# lio_map_odom_bridge, in one place, for every estimator.
+# lio_odom_bridge, in one place, for every estimator.
 #
 # The bridge turns a LIO estimator's /odom_lio (lio_init -> <body frame>) into
 # odom -> base_footprint, closing the tree per REP-105. FAST-LIO and Point-LIO
-# need it identically -- same six parameters, same topic -- so include this
-# rather than starting the node yourself:
+# need it identically, so include this file rather than starting the node
+# yourself -- pass use_sim_time, config_path and config_file.
 #
-#     IncludeLaunchDescription(
-#         PythonLaunchDescriptionSource(os.path.join(
-#             get_package_share_directory('pepper_slam'),
-#             'launch', 'lio_odom_bridge.launch.py')),
-#         launch_arguments={
-#             'use_sim_time': use_sim_time,
-#             'config_path': <the estimator's config dir>,
-#             'config_file': <the config being used>,
-#         }.items())
-#
-# THE BODY FRAME IS READ FROM THE CONFIG (publish.body_frame), not from a table.
-# It must equal what the estimator stamps, or the bridge composes
+# THE BODY FRAME MUST EQUAL WHAT THE ESTIMATOR STAMPS, or the bridge composes
 # odom -> base_footprint through the wrong rigid offset and yields a pose that
-# looks plausible and is wrong. Reading the yaml makes the two impossible to
-# desync, and a new config needs no edit here.
-#
-# This used to be duplicated in FAST_LIO/launch/mapping.launch.py and
-# point_lio/launch/mapping_l2lidar_node.launch.py, each with its own copy of the
-# resolver and a hardcoded {config_file: frame} table.
+# looks plausible and is wrong. lidar_imu_frame now names it explicitly;
+# passing '' falls back to reading publish.body_frame from the config, which
+# makes the two impossible to desync.
 
 import os
 
@@ -86,10 +72,17 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'config_file', default_value='l2_rsimu.yaml',
             description='Config whose publish.body_frame the bridge must match.'),
+        # Hardcoded to match every caller: the RealSense IMU is the only
+        # configuration in use, and it is what l2_rsimu.yaml and
+        # l2lidar_rsimu.yaml both name as publish.body_frame. Bridging an
+        # L2-IMU config (l2.yaml, l2lidar_node.yaml -> l2lidar_frame_imu) now
+        # needs the frame passed explicitly; an empty string restores the
+        # read-it-from-the-config behaviour _resolve_body_frame implements.
         DeclareLaunchArgument(
-            'lidar_imu_frame', default_value='',
-            description='Override the body frame. Empty (default) reads it from '
-                        'the config, which is what you want.'),
+            'lidar_imu_frame', default_value='camera_imu_optical_frame',
+            description='Body frame the bridge stamps. Must match the '
+                        'estimator config\'s publish.body_frame. Empty reads '
+                        'it from that config instead.'),
         DeclareLaunchArgument(
             'bridge_level_frame', default_value='true',
             description='Publish the static odom -> odom leveling frame. False '
@@ -106,8 +99,8 @@ def generate_launch_description():
 
         Node(
             package='pepper_slam',
-            executable='lio_map_odom_bridge.py',
-            name='lio_map_odom_bridge',
+            executable='lio_odom_bridge.py',
+            name='lio_odom_bridge',
             output='screen',
             parameters=[{
                 'use_sim_time': LaunchConfiguration('use_sim_time'),

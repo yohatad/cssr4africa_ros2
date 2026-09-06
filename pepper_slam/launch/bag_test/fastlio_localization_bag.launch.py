@@ -10,10 +10,9 @@
 #     --read-ahead-queue-size 2000
 #
 # The QoS overrides are REQUIRED: /imu/data and /camera/imu were recorded
-# BEST_EFFORT and a RELIABLE subscriber matches nothing against them, so without
-# the file the estimator waits forever for IMU init and prints nothing.
-# Do NOT replay /tf -- the bag's wheel odometry fights the bridge for
-# base_footprint's parent.
+# BEST_EFFORT, so without them the estimator waits forever for IMU init and
+# prints nothing. Replaying /tf is safe and wanted. README.md in this directory
+# has both in full, plus the pre-8edd1f5 bags that need a check first.
 #
 # map_pcd and keyframe_poses MUST come from the same mapping run. Build them
 # with bag_test/fastlio_lc_bag.launch.py, then /pgo_batch_optimize.
@@ -54,10 +53,17 @@ def _seed_from_first_keyframe(context, *args, **kwargs):
     """
     import math
 
-    path = LaunchConfiguration('keyframe_poses').perform(context)
+    # keyframe_poses is deliberately undeclared here (see the note in
+    # generate_launch_description), and LaunchConfiguration.perform() RAISES on an
+    # undeclared name rather than returning '' -- so this launch died outright with
+    # "launch configuration 'keyframe_poses' does not exist" whenever it was not
+    # passed on the command line, i.e. the normal case, and the fallback below was
+    # unreachable. Read the context dict instead: it still holds the value when
+    # keyframe_poses:=<path> is passed, and is simply absent otherwise.
+    path = context.launch_configurations.get('keyframe_poses', '')
     if not path:
         from ament_index_python.packages import get_package_share_directory as g
-        path = os.path.join(g('pepper_navigation'), 'map',
+        path = os.path.join(g('pepper_navigation'), 'pcd',
                             'pepper_map_lc_poses.txt')
     try:
         with open(path) as f:
@@ -119,6 +125,36 @@ def generate_launch_description():
         description='Seconds to wait before seeding, so FAST-LIO has finished '
                     'IMU init and is publishing odometry.')
 
+    # 'none': the bag carries its own /tf_static, and a second latched publisher
+    # duplicates the rig edges -- whichever lands last silently wins. Keep it
+    # DECLARED, not forwarded, or a launch_arguments entry shadows the command
+    # line and makes publisher:=urdf a silent no-op.
+    declare_publisher_cmd = DeclareLaunchArgument(
+        'publisher', default_value='urdf',
+        description="pepper_sensor_tf publisher: 'urdf' (default) publishes the "
+                    "rig and gives RViz a RobotModel; 'yaml' the same geometry "
+                    "without the model; 'none' relies on the bag's /tf_static.")
+    # 'all', not 'mount'. The bag DOES carry these edges -- but all of its
+    # /tf_static messages sit at t=0.000 s, so `ros2 bag play --start-offset N`
+    # skips them entirely and nothing publishes the rig. base_footprint and
+    # camera_imu_optical_frame then come up as separate TF roots and anything
+    # needing the extrinsic between them fails, silently.
+    #
+    # Publishing them here regardless is safe: MEASURED against this bag's own
+    # /tf_static, the two agree to 4.8e-7 over all 10 shared edges (float32
+    # rounding), because both derive from config/sensor_tf.yaml. Duplicate
+    # publishers of IDENTICAL geometry are redundant, not harmful.
+    #
+    # Live is the opposite case and wants 'mount': there the RealSense driver
+    # publishes its internal chain from the device's factory calibration, which
+    # is a genuinely different source, and two publishers disagreeing is a
+    # silent intermittent wrong answer.
+    declare_scope_cmd = DeclareLaunchArgument(
+        'scope', default_value='all', choices=['mount', 'all'],
+        description="Rig transforms to publish. 'all' includes the RealSense "
+                    "internal chain, needed when the bag's /tf_static is not "
+                    "replayed. Use 'mount' on the live robot.")
+
     inner = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(launch_dir, 'fastlio_localization_l2.launch.py')),
@@ -133,6 +169,8 @@ def generate_launch_description():
     ld.add_action(declare_rviz_cmd)
     ld.add_action(declare_seed_cmd)
     ld.add_action(declare_seed_delay_cmd)
+    ld.add_action(declare_publisher_cmd)
+    ld.add_action(declare_scope_cmd)
     ld.add_action(OpaqueFunction(
         function=_seed_from_first_keyframe,
         condition=IfCondition(LaunchConfiguration('seed_from_map_start'))))

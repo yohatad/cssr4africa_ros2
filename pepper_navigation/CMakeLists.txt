@@ -62,6 +62,12 @@ install(TARGETS send_goal
 # map-editing utility (no rclpy), so it does not belong in a ROS package.
 # Run it manually: python3 utils/generate_keepout.py
 
+# Install python helper scripts
+install(PROGRAMS
+  scripts/wait_for_map_then_start.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 # Install launch files
 install(DIRECTORY
   launch/
@@ -76,29 +82,76 @@ install(DIRECTORY
   FILES_MATCHING PATTERN "*.rviz"
 )
 
-# Install config files
-install(DIRECTORY
-  config/
-  DESTINATION share/${PROJECT_NAME}/config
-  FILES_MATCHING PATTERN "*.yaml"
-)
+# Install config files.
+#
+# SYMLINKED, not copied, so tuning is live: nav2 reads
+# share/<pkg>/config/<file>.yaml, and with a symlink that IS the source file.
+# Edit it -- by hand or from nav2_config's Save Config -- relaunch, done. No
+# colcon build in the loop.
+#
+# install(DIRECTORY) copies unconditionally, and colcon's --symlink-install does
+# NOT change that: it applies to Python packages and a few install types, not to
+# install(DIRECTORY). Without this, every save left nav2 reading the OLD values
+# with nothing to indicate why -- the config looked edited and had no effect.
+#
+# Falls back to a copy if the symlink cannot be created, so the package still
+# installs correctly and only the live-editing convenience is lost.
+#
+# Two install(CODE) blocks: the first carries the configure-time paths in, the
+# second is a bracket argument so the script needs no backslash escaping.
+# NOTE: no ';' anywhere inside these blocks -- CMake treats it as a list
+# separator and silently truncates the generated script mid-statement.
+install(CODE "set(_cfg_src \"${CMAKE_CURRENT_SOURCE_DIR}/config\")")
+install(CODE "set(_cfg_pkg \"${PROJECT_NAME}\")")
+install(CODE [[
+  set(_cfg_dst "${CMAKE_INSTALL_PREFIX}/share/${_cfg_pkg}/config")
+  get_filename_component(_cfg_parent "${_cfg_dst}" DIRECTORY)
+  file(MAKE_DIRECTORY "${_cfg_parent}")
+  if(EXISTS "${_cfg_dst}" OR IS_SYMLINK "${_cfg_dst}")
+    file(REMOVE_RECURSE "${_cfg_dst}")
+  endif()
+  execute_process(
+    COMMAND ${CMAKE_COMMAND} -E create_symlink "${_cfg_src}" "${_cfg_dst}"
+    RESULT_VARIABLE _cfg_rc ERROR_QUIET)
+  if(_cfg_rc EQUAL 0)
+    message(STATUS "config/ symlinked -> ${_cfg_src} (edits are live)")
+  else()
+    message(STATUS "config/ symlink failed -- copying instead")
+    file(COPY "${_cfg_src}/" DESTINATION "${_cfg_dst}"
+         FILES_MATCHING PATTERN "*.yaml")
+  endif()
+]])
 
-# Install map files.
-# *.pcd is here for the 3D prior map fastlio_lc_pgo's /pgo_batch_optimize
-# writes (map_pcd_path) -- lio_localization ICPs against it, and it shares the
-# levelled, floor-referenced frame with the .pgm/.yaml 2D grid beside it.
+# Install 2D occupancy grid files (nav2 map_server format).
 install(DIRECTORY
   map/
   DESTINATION share/${PROJECT_NAME}/map
   FILES_MATCHING
   PATTERN "*.yaml"
   PATTERN "*.pgm"
+)
+
+# Install the 3D prior map fastlio_lc_pgo's /pgo_batch_optimize writes
+# (map_pcd_path) -- lio_localization ICPs against it. It shares the levelled,
+# floor-referenced frame with the .pgm/.yaml 2D grid in map/, but lives in its
+# own directory since it is a different artifact (3D prior vs. 2D nav grid).
+install(DIRECTORY
+  pcd/
+  DESTINATION share/${PROJECT_NAME}/pcd
+  FILES_MATCHING
   PATTERN "*.pcd"
   # Levelled keyframe poses for lio_localization's seedless global search /
-  # /relocalize. Ships here so map_pcd, map and keyframe_poses are ONE
-  # package-relative set -- no absolute /home/<user> path that only resolves on
-  # the machine that built the map.
+  # /relocalize. Ships beside the .pcd it was written alongside, so map_pcd
+  # and keyframe_poses are ONE package-relative set -- no absolute
+  # /home/<user> path that only resolves on the machine that built the map.
   PATTERN "*_poses.txt"
+  # pose.json is the SAME mapping run in the format fastlio_localization reads:
+  # per-keyframe quaternion poses, against the KITTI 3x4 in *_poses.txt. It
+  # ships here so the two localization stacks' maps are visibly ONE set rather
+  # than two files that happen to describe the same building. The 2735 keyframe
+  # CLOUDS it indexes are 75 MB and deliberately do NOT live in this package --
+  # they are in ros2_ws/bags/pcd, addressed by localization.map_scan_dir.
+  PATTERN "*.json"
 )
 
 if(BUILD_TESTING)

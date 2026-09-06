@@ -4,7 +4,7 @@
 # Grid/3D) -- with ICP proximity loop closures on /points.
 #
 # Frames: FAST-LIO's own odom frame is IMU-aligned (tilted ~90 deg on Pepper's
-# mount). lio_map_odom_bridge publishes odom -> base_footprint plus a one-time
+# mount). lio_odom_bridge publishes odom -> base_footprint plus a one-time
 # gravity-leveled odom -> lio_init. RTAB-Map anchors on odom so its map
 # frame is Z-up, which the 2D occupancy projection requires.
 #
@@ -19,7 +19,7 @@
 import os
 
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 
@@ -29,11 +29,13 @@ def generate_launch_description():
         get_package_share_directory('pepper_slam'), 'launch')
 
     # 2026-08-12: was fast_lio/mapping.launch.py directly, which does NOT
-    # include pepper_sensor_tf -- so lio_map_odom_bridge had no static
+    # include pepper_sensor_tf -- so lio_odom_bridge had no static
     # base_footprint -> ..._imu chain and could never close
     # odom -> base_footprint. Going through pepper_slam's own odometry launch
-    # fixes that, and brings the RealSense-IMU default plus the derived
-    # lidar_imu_frame / sensor_tf scope with it.
+    # fixes that, and brings the RealSense-IMU default plus its matching
+    # lidar_imu_frame with it. (Neither that frame nor the sensor_tf scope is
+    # derived from anything -- pass scope:=all with publisher:=urdf for a bag
+    # with an empty /tf_static.)
     fast_lio = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(pkg_launch_dir, 'fastlio_odometry.launch.py')),
@@ -108,4 +110,37 @@ def generate_launch_description():
         }.items(),
     )
 
-    return LaunchDescription([fast_lio, rtabmap])
+    # 'none': the bag carries its own /tf_static, and a second latched publisher
+    # duplicates the rig edges -- whichever lands last silently wins. Pass
+    # publisher:=urdf scope:=all for a legacy bag with an empty /tf_static;
+    # rtabmap needs the camera edges and will not start without them.
+    # Keep this DECLARED, not forwarded: a launch_arguments entry would shadow
+    # the command line and make the override above a silent no-op.
+    declare_publisher_cmd = DeclareLaunchArgument(
+        'publisher', default_value='urdf',
+        description="pepper_sensor_tf publisher: 'urdf' (default) publishes the "
+                    "rig and gives RViz a RobotModel; 'yaml' the same geometry "
+                    "without the model; 'none' relies on the bag's /tf_static.")
+    # 'all', not 'mount'. The bag DOES carry these edges -- but all of its
+    # /tf_static messages sit at t=0.000 s, so `ros2 bag play --start-offset N`
+    # skips them entirely and nothing publishes the rig. base_footprint and
+    # camera_imu_optical_frame then come up as separate TF roots and anything
+    # needing the extrinsic between them fails, silently.
+    #
+    # Publishing them here regardless is safe: MEASURED against this bag's own
+    # /tf_static, the two agree to 4.8e-7 over all 10 shared edges (float32
+    # rounding), because both derive from config/sensor_tf.yaml. Duplicate
+    # publishers of IDENTICAL geometry are redundant, not harmful.
+    #
+    # Live is the opposite case and wants 'mount': there the RealSense driver
+    # publishes its internal chain from the device's factory calibration, which
+    # is a genuinely different source, and two publishers disagreeing is a
+    # silent intermittent wrong answer.
+    declare_scope_cmd = DeclareLaunchArgument(
+        'scope', default_value='all', choices=['mount', 'all'],
+        description="Rig transforms to publish. 'all' includes the RealSense "
+                    "internal chain, needed when the bag's /tf_static is not "
+                    "replayed. Use 'mount' on the live robot.")
+
+    return LaunchDescription([declare_publisher_cmd,
+        declare_scope_cmd, fast_lio, rtabmap])

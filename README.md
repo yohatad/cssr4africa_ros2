@@ -46,10 +46,21 @@ Localization-only deployments get their fused `map → base_footprint` pose (`/l
 - **`dec_interfaces`** - Custom ROS2 message, service, and action definitions
 - **`dec_common`** - Shared C++ utilities: the camera lifecycle node base class, the ByteTrack multi-object tracker, and ROS2 parameter-loading helpers
 
-## 🖥️ Hardware Diagram
+## 🖥️ Hardware Setup
 
 <div align="center">
-<img src="images/Hardware Diagram.png" alt="Hardware Diagram" width="1200px">
+<table>
+<tr>
+<td align="center" width="50%">
+<img src="images/Full_pepper_image.jpg" alt="Pepper with the sensor collar and onboard compute" width="290px"><br>
+<em>Pepper carrying the sensor collar and the onboard compute board at the waist</em>
+</td>
+<td align="center" width="50%">
+<img src="images/Lidar_and_RealSense.jpg" alt="Unitree L2 lidar and Intel RealSense on the sensor collar" width="290px"><br>
+<em>The 3D-printed collar: Unitree L2 lidar above the Intel RealSense, both facing forward</em>
+</td>
+</tr>
+</table>
 </div>
 
 ## 🚀 Quick Start

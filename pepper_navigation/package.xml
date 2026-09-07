@@ -22,8 +22,11 @@
   <depend>nav2_collision_monitor</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_action</depend>
-  <!-- scripts/: wait_for_map_then_start.py, localization_recovery.py -->
+  <!-- scripts/: wait_for_map_then_start.py, localization_recovery.py,
+       localization_watchdog.py -->
   <depend>rclpy</depend>
+  <depend>diagnostic_msgs</depend>
+  <depend>action_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>visualization_msgs</depend>

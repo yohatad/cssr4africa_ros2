@@ -111,6 +111,10 @@ def generate_launch_description():
         'rviz', default_value='true',
         description='Open RViz2 pre-configured for this nav stack (map, costmaps, '
                     'plans, safety zones, 2D Pose Estimate / Nav2 Goal tools).')
+    declare_watchdog_cmd = DeclareLaunchArgument(
+        'watchdog', default_value='true',
+        description='Cancel navigation goals while fastlio_localization reports '
+                    'itself lost. Set false to monitor without ever holding nav.')
 
     # Sensor TF + fastlio_localization (FAST_LIO), which loads the prior map
     # INTO the ikd-Tree the iEKF registers against, so the map constrains the
@@ -288,6 +292,28 @@ def generate_launch_description():
         parameters=[{'use_sim_time': use_sim_time, 'backend': 'fastloc'}],
     )
 
+    # Consumes fastlio_localization's own health status and holds navigation
+    # while it says it is lost. Only wired into this profile: amcl and rtabmap
+    # publish no comparable signal, so there is nothing for it to watch there.
+    #
+    # call_recovery stays FALSE: fastlio_localization already re-arms its own
+    # search (auto_relocalize), so calling /localization_recover on top would
+    # restart a search that is already running.
+    localization_watchdog = Node(
+        package='pepper_navigation',
+        executable='localization_watchdog.py',
+        name='localization_watchdog',
+        output='screen',
+        condition=IfCondition(LaunchConfiguration('watchdog')),
+        parameters=[{
+            'use_sim_time': use_sim_time,
+            'status_name': 'fastlio_localization: pose lock',
+            'lost_duration': 5.0,
+            'cancel_goals': True,
+            'call_recovery': False,
+        }],
+    )
+
     lifecycle_manager = Node(
         package='nav2_lifecycle_manager',
         executable='lifecycle_manager',
@@ -327,6 +353,7 @@ def generate_launch_description():
         declare_lidar_imu_frame_cmd,
         declare_rviz_cmd,
         declare_rviz_config_cmd,
+        declare_watchdog_cmd,
         sensor_tf,
         fastloc,
         map_server,
@@ -342,4 +369,5 @@ def generate_launch_description():
         lifecycle_manager,
         nav2_starter,
         localization_recovery,
+        localization_watchdog,
     ])

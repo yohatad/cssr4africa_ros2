@@ -66,6 +66,7 @@ install(TARGETS send_goal
 install(PROGRAMS
   scripts/wait_for_map_then_start.py
   scripts/localization_recovery.py
+  scripts/localization_watchdog.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

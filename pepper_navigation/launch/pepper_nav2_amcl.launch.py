@@ -288,6 +288,17 @@ def generate_launch_description():
         condition=IfCondition(rviz),
     )
 
+    # One /localization_recover entry point, identical across all three nav
+    # profiles, so recovering does not depend on remembering which backend is
+    # up. Here it forwards to amcl's /reinitialize_global_localization.
+    localization_recovery = Node(
+        package='pepper_navigation',
+        executable='localization_recovery.py',
+        name='localization_recovery',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time, 'backend': 'amcl'}],
+    )
+
     lifecycle_manager = Node(
         package='nav2_lifecycle_manager',
         executable='lifecycle_manager',
@@ -334,4 +345,5 @@ def generate_launch_description():
         global_voxel_markers,
         rviz_node,
         lifecycle_manager,
+        localization_recovery,
     ])

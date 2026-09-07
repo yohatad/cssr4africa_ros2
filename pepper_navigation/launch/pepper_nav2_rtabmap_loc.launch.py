@@ -213,6 +213,19 @@ def generate_launch_description():
         }],
     )
 
+    # One /localization_recover entry point, identical across all three nav
+    # profiles. rtabmap has no forced re-search to forward to (it relocalizes
+    # from loop closure on its own), so here the service exists only to say so
+    # and point at /initialpose -- better than the operator discovering that
+    # by trying whatever worked on the other two profiles.
+    localization_recovery = Node(
+        package='pepper_navigation',
+        executable='localization_recovery.py',
+        name='localization_recovery',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time, 'backend': 'rtabmap'}],
+    )
+
     return LaunchDescription([
         declare_use_sim_time_cmd,
         declare_database_path_cmd,
@@ -227,4 +240,5 @@ def generate_launch_description():
         collision_monitor,
         lifecycle_manager,
         lifecycle_manager_collision_monitor,
+        localization_recovery,
     ])

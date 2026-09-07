@@ -277,6 +277,17 @@ def generate_launch_description():
                      'source_frame': 'base_footprint'}],
     )
 
+    # One /localization_recover entry point, identical across all three nav
+    # profiles, so recovering does not depend on remembering which backend is
+    # up. Here it forwards to fastlio_localization's /relocalize.
+    localization_recovery = Node(
+        package='pepper_navigation',
+        executable='localization_recovery.py',
+        name='localization_recovery',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time, 'backend': 'fastloc'}],
+    )
+
     lifecycle_manager = Node(
         package='nav2_lifecycle_manager',
         executable='lifecycle_manager',
@@ -330,4 +341,5 @@ def generate_launch_description():
         rviz_node,
         lifecycle_manager,
         nav2_starter,
+        localization_recovery,
     ])

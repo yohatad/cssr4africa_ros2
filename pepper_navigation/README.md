@@ -103,6 +103,12 @@ difference between them is a *localization* difference and nothing else.
 | `nav2_params_amcl.yaml` | `pepper_nav2_amcl.launch.py` | AMCL on FAST-LIO odom |
 | `nav2_params_fastloc.yaml` | `pepper_nav2_fastloc.launch.py` | `fastlio_localization`: prior map inside the iEKF |
 | `nav2_params_rtabmap_loc.yaml` | `pepper_nav2_rtabmap_loc.launch.py` | RTAB-Map localization mode vs a `.db` |
+| `nav2_params_wheel_odom.yaml` | not launched by default | wheel-odometry variant, kept for comparison |
+
+`test/test_shared_nav2_params.py` guards the three node blocks
+(`behavior_server`, `controller_server`, `planner_server`) that are meant to be
+byte-identical across all five, so tuning a gain in four files and forgetting
+the fifth is caught rather than discovered later on the robot.
 
 The **keepout filter is not carried into the three current stacks**:
 `keepout_zone.yaml`'s mask was authored against an older map's
@@ -272,6 +278,34 @@ Camera RGB topics are subscribed by RTAB-Map (via `pepper_slam`) in that stack o
 | `/global_costmap/costmap` | `nav_msgs/OccupancyGrid` | Global costmap |
 | `/local_costmap/costmap` | `nav_msgs/OccupancyGrid` | Local costmap |
 | `/plan` | `nav_msgs/Path` | Current planned global path |
+| `/localization/overlap` | `std_msgs/Float32` | fastloc only: fraction of the live scan landing on the prior map, 1 Hz |
+| `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | fastloc only: `fastlio_localization: pose lock` status (OK / WARN / ERROR) |
+
+### Services
+
+| Service | Type | Description |
+|---------|------|-------------|
+| `/localization_recover` | `std_srvs/Trigger` | "I am lost, fix it", same call on every profile — dispatches to whichever backend is running |
+| `/relocalize` | `std_srvs/Trigger` | fastloc only: re-arms the ScanContext search from scratch (what `/localization_recover` forwards to) |
+| `/reinitialize_global_localization` | `std_srvs/Empty` | AMCL only: re-scatters particles globally |
+
+### Losing localization
+
+`fastlio_localization` re-checks its own lock at 1 Hz by scoring the live scan
+against the prior map, because a wrong-but-confident lock has no other symptom —
+a self-similar corridor still produces plausible scan matches at the wrong
+place. Sustained low overlap re-arms its search automatically, and
+`localization_watchdog` cancels the active navigation goal while it lasts, so
+the robot stops driving toward a goal computed from a pose it no longer trusts.
+
+Only sustained badness counts: a single low reading is normal when turning a
+corner into unmapped space or when someone walks through the scan. Pass
+`watchdog:=false` to monitor without ever holding navigation.
+
+```bash
+ros2 service call /localization_recover std_srvs/srv/Trigger   # any profile
+ros2 topic echo /localization/overlap                          # fastloc health
+```
 
 ### The velocity chain
 
@@ -388,6 +422,10 @@ pepper_navigation/
 ├── pcd/                          # fastloc's prior map (poses tracked, clouds gitignored)
 │   ├── sc_pose_20260823.json     # per-keyframe poses, read by fastlio_localization
 │   └── pepper_map_lc.pcd, pepper_map_lc_poses.txt   # the PGO run's 3D map product
+├── scripts/                      # rclpy helper nodes, installed as executables
+│   ├── wait_for_map_then_start.py # starts nav2 once the map frame exists
+│   ├── localization_recovery.py   # /localization_recover, one entry point per profile
+│   └── localization_watchdog.py   # holds navigation while localization is lost
 ├── src/tools/                    # dev/debug tooling, not the production pipeline
 │   ├── send_goal.cpp             # CLI utility to send Nav2 goals
 │   └── odom_path_publisher.cpp   # publishes traversed path for RViz2

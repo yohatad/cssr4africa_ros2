@@ -24,7 +24,8 @@ source ~/ros2_ws/install/setup.bash
 | `pepper_odom` | `naoqi_driver2` | wheel odometry; **not** named `odom` on purpose |
 | `odom` | FAST-LIO | IMU-aligned, tilted ~90° on Pepper's mount — **not** gravity-aligned |
 | `odom` | `lio_odom_bridge` | one-time gravity-leveled parent of `odom`; Z-up |
-| `map` | RTAB-Map / PGO / `transform_fusion` | whichever layer owns the loop-closure or prior-map correction |
+| `map` | RTAB-Map / PGO | whichever layer owns the loop-closure correction |
+| `map` | `fastlio_localization` | prior-map localization: publishes `map -> base_footprint` directly, with no `odom` edge at all (see `FRAMES.md`) |
 
 **Only one node may publish a given frame's parent** — that constraint is what
 the FAST-LIO options below are choosing between. RTAB-Map must anchor on
@@ -48,12 +49,14 @@ are upstream defaults for other lidars). Pass `use_sim_time:=true` for bag repla
 | Odometry only | `pepper_slam fastlio_odometry.launch.py` | none | nobody | `true` (unused) |
 | + RTAB-Map | `pepper_slam bag_test/rtabmap_fastlio_bag.launch.py` | RTAB-Map ICP + visual BoW | RTAB-Map | `true` |
 | + Scan-Context PGO | `fastlio_lc_pgo fastlio_lc_l2.launch.py` | GTSAM/ISAM2 on Scan Context | `pgo_map_odom_bridge` | `false` |
-| + prior-map ICP | `lio_localization fastlio_localization_l2.launch.py` | n/a (localization) | `transform_fusion` | `false` |
+| + prior map in the filter | `fast_lio localization_l2.launch.py` | n/a (localization) | `fastlio_localization` | n/a (no bridge runs) |
 
 Odometry alone has no drift correction. RTAB-Map on top is the validated mapping
 configuration (best measured closure 0.19 m). PGO adds pose-graph loop closure
-plus a ray-traced `/projected_map`. Prior-map ICP is the lightest runtime stack,
-wrapped for Nav2 by `pepper_nav2_fastloc.launch.py`.
+plus a ray-traced `/projected_map`. Prior-map localization is the lightest
+runtime stack -- the map is loaded into the ikd-Tree the iEKF registers
+against, so there is no correction node beside the filter and no `odom` frame
+-- and is wrapped for Nav2 by `pepper_nav2_fastloc.launch.py`.
 
 **`bridge_level_frame` is the one that bites.** FAST-LIO publishes in the raw
 initial-IMU frame — the L2 IMU reads gravity along +X, so `odom` looks tilted

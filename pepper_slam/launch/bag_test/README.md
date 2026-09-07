@@ -14,8 +14,11 @@ paths follow.
 | `pointlio_odometry_bag.launch.py` | `pepper_slam/pointlio_odometry.launch.py` | same |
 | `fastlio_lc_bag.launch.py` | `fastlio_lc_pgo/fastlio_lc_l2.launch.py` | same |
 | `pointlio_lc_bag.launch.py` | `fastlio_lc_pgo/pointlio_lc_l2.launch.py` | same |
-| `fastlio_localization_bag.launch.py` | `lio_localization/fastlio_localization_l2.launch.py` | same |
 | `rtabmap_*_bag.launch.py` | `pepper_slam/rtabmap_base.launch.py` (+ a LIO) | build one from `rtabmap_base` |
+
+Localization needs no bag wrapper either: `fast_lio`'s
+`localization_l2.launch.py` defaults `use_sim_time:=true` and is bag-oriented
+as it stands.
 
 Navigation needs no bag wrapper: `pepper_nav2_fastloc.launch.py` takes
 `use_sim_time` directly, so the live entry point replays a bag as-is.

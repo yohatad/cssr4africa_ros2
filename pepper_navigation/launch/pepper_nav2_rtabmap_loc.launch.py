@@ -1,15 +1,13 @@
 # Nav2 bringup for Pepper on FAST-LIO + RTAB-Map (localization mode).
 #
-# Localizes against the saved rtabmap_fastlio_refined.db (today's best
-# validated map -- see project_l2_slam_stack memory) instead of AMCL + a
+# Localizes against the saved rtabmap_fastlio_refined.db instead of AMCL + a
 # static map_server: RTAB-Map runs with Mem/IncrementalMemory=false, reusing
-# the exact odometry/appearance/ICP pipeline already tuned for mapping, and
-# publishes /map itself. No pointcloud_to_laserscan conversion needed --
-# Nav2's costmaps take /points (PointCloud2) directly.
+# the odometry/appearance/ICP pipeline tuned for mapping, and publishes /map
+# itself. No pointcloud_to_laserscan -- costmaps take /points directly.
 #
-# Frames: FAST-LIO's odom -> lio_odom_bridge's gravity-leveled
-# odom -> RTAB-Map's map. See nav2_params_rtabmap_loc.yaml for why
-# local_costmap uses odom (not pepper_odom) as its global_frame.
+# Frames: FAST-LIO odom -> lio_odom_bridge's gravity-leveled odom -> RTAB-Map
+# map. See nav2_params_rtabmap_loc.yaml for why local_costmap uses odom (not
+# pepper_odom) as its global_frame.
 #
 # Usage (real robot):
 #   ros2 launch pepper_navigation pepper_nav2_rtabmap_loc.launch.py
@@ -60,9 +58,7 @@ def generate_launch_description():
         }.items(),
     )
 
-    # odom -> base_footprint. FAST_LIO's mapping.launch.py no longer starts this
-    # (see FAST_LIO d8b274c): it was Pepper glue in a launch file shared with
-    # every other FAST-LIO sensor config.
+    # odom -> base_footprint (FAST_LIO's own launch file no longer starts this).
     lio_bridge = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(get_package_share_directory('pepper_slam'),
@@ -99,11 +95,9 @@ def generate_launch_description():
             'localization': 'true',
             'database_path': database_path,
             # Same ICP/grid tuning validated for mapping (see
-            # pepper_slam's rtabmap_fastlio_bag.launch.py); dropped
-            # --delete_db_on_start
-            # (would erase the map!) and the NeighborLinkRefining/Proximity
-            # params (those govern adding NEW loop-closure links, moot with
-            # Mem/IncrementalMemory=false).
+            # rtabmap_fastlio_bag.launch.py); no --delete_db_on_start
+            # (would erase the map) or NeighborLinkRefining/Proximity params
+            # (govern new loop-closure links, moot with IncrementalMemory=false).
             'rtabmap_args': '--Reg/Strategy 1 '
                             '--Icp/VoxelSize 0.15 --Icp/PointToPlaneK 20 '
                             '--Icp/MaxCorrespondenceDistance 0.5 '
@@ -156,8 +150,8 @@ def generate_launch_description():
         remappings=[('cmd_vel', 'cmd_vel_raw')],
     )
 
-    # Self-hit filter feeding the safety layer: strip Pepper's own body (< 0.8 m)
-    # from the raw L2 /points so the collision monitor doesn't freeze on it.
+    # Strips Pepper's own body (< 0.8 m) so the collision monitor doesn't
+    # freeze on self-hits.
     points_safety_filter = Node(
         package='pepper_slam',
         executable='cloud_range_filter.py',
@@ -204,10 +198,8 @@ def generate_launch_description():
             ],
         }],
     )
-    # Separate lifecycle manager for collision_monitor -- Nav2's own
-    # convention (see nav2_collision_monitor's example bringup), kept out of
-    # the navigation group above so a costmap/planner failure and a collision
-    # monitor failure don't take each other's bond down.
+    # Separate manager so a planner failure and a collision monitor failure
+    # don't take each other's bond down.
     lifecycle_manager_collision_monitor = Node(
         package='nav2_lifecycle_manager',
         executable='lifecycle_manager',

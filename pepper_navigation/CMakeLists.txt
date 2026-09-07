@@ -131,24 +131,26 @@ install(DIRECTORY
   PATTERN "*.pgm"
 )
 
-# Install the 3D prior map fastlio_lc_pgo's /pgo_batch_optimize writes
-# (map_pcd_path) -- lio_localization ICPs against it. It shares the levelled,
-# floor-referenced frame with the .pgm/.yaml 2D grid in map/, but lives in its
-# own directory since it is a different artifact (3D prior vs. 2D nav grid).
+# Install the 3D map fastlio_lc_pgo's /pgo_batch_optimize writes
+# (map_pcd_path). It shares the levelled, floor-referenced frame with the
+# .pgm/.yaml 2D grid in map/, but lives in its own directory since it is a
+# different artifact (3D cloud vs. 2D nav grid). Nothing localizes against it
+# directly any more -- fastlio_localization reads the per-keyframe pose.json
+# and clouds below -- but it is still the PGO run's map product.
 install(DIRECTORY
   pcd/
   DESTINATION share/${PROJECT_NAME}/pcd
   FILES_MATCHING
   PATTERN "*.pcd"
-  # Levelled keyframe poses for lio_localization's seedless global search /
-  # /relocalize. Ships beside the .pcd it was written alongside, so map_pcd
-  # and keyframe_poses are ONE package-relative set -- no absolute
-  # /home/<user> path that only resolves on the machine that built the map.
+  # Levelled keyframe poses in KITTI 3x4, written beside the .pcd by the same
+  # PGO run. No longer a runtime input (that was lio_localization's global
+  # search); kept as the run's record, and as the plain-text counterpart to
+  # the pose.json below.
   PATTERN "*_poses.txt"
   # pose.json is the SAME mapping run in the format fastlio_localization reads:
   # per-keyframe quaternion poses, against the KITTI 3x4 in *_poses.txt. It
-  # ships here so the two localization stacks' maps are visibly ONE set rather
-  # than two files that happen to describe the same building. The 2735 keyframe
+  # ships here so every artifact of the run stays visibly ONE set rather
+  # than files that happen to describe the same building. The 2735 keyframe
   # CLOUDS it indexes are 75 MB and deliberately do NOT live in this package --
   # they are in ros2_ws/bags/pcd, addressed by localization.map_scan_dir.
   PATTERN "*.json"

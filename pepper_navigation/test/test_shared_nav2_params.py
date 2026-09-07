@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Guard the nav2 param sections that are meant to be identical across modes.
 
-There are four nav2 param files (amcl / fastlio_loc / rtabmap_loc / base). Most
+There are four nav2 param files (amcl / fastloc / rtabmap_loc / base). Most
 of their content legitimately differs per mode -- only 3 of 10 top-level nodes
 are true duplicates. Those three are the drift risk: tuning a controller gain
 means editing four files, and nothing tells you if you edit three.
@@ -20,7 +20,7 @@ import pytest
 import yaml
 
 SHARED = ("behavior_server", "controller_server", "planner_server")
-FILES = ("nav2_params_amcl.yaml", "nav2_params_fastlio_loc.yaml",
+FILES = ("nav2_params_amcl.yaml", "nav2_params_fastloc.yaml",
          "nav2_params_rtabmap_loc.yaml", "nav2_params.yaml")
 
 

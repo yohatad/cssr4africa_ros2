@@ -1,9 +1,9 @@
 # Nav2 params for the AMCL + map_server stack on FAST-LIO odometry.
 #
 # The baseline localization path, for comparison against the two LIO
-# stacks (nav2_params_fastlio_loc.yaml = lio_localization ICP,
+# stacks (nav2_params_fastloc.yaml = fastlio_localization,
 # nav2_params_rtabmap_loc.yaml = RTAB-Map). Everything below except the
-# amcl block is byte-identical to nav2_params_fastlio_loc.yaml, so a
+# amcl block is byte-identical to nav2_params_fastloc.yaml, so a
 # difference in behaviour between the two is a difference in localization
 # only -- not in tuning.
 #

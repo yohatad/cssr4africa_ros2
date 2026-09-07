@@ -101,7 +101,7 @@ difference between them is a *localization* difference and nothing else.
 |-------------|---------|--------------|
 | `nav2_params.yaml` | `pepper_navigation.launch.py` | AMCL on wheel odom (`pepper_odom`), legacy |
 | `nav2_params_amcl.yaml` | `pepper_nav2_amcl.launch.py` | AMCL on FAST-LIO odom |
-| `nav2_params_fastlio_loc.yaml` | `pepper_nav2_fastlio_loc.launch.py` | `lio_localization` ICP vs a prior `.pcd` |
+| `nav2_params_fastloc.yaml` | `pepper_nav2_fastloc.launch.py` | `fastlio_localization`: prior map inside the iEKF |
 | `nav2_params_rtabmap_loc.yaml` | `pepper_nav2_rtabmap_loc.launch.py` | RTAB-Map localization mode vs a `.db` |
 
 The **keepout filter is not carried into the three current stacks**:
@@ -119,7 +119,7 @@ FAST-LIO dead reckoning. They differ only in what corrects the drift:
 | Launch file | Localization | Prior map | Cost |
 |-------------|--------------|-----------|------|
 | `pepper_nav2_amcl.launch.py` | AMCL particle filter over a flattened `/scan` | 2D grid (`.yaml`/`.pgm`) | Cheapest; 2D only |
-| `pepper_nav2_fastlio_loc.launch.py` | `lio_localization`, 3D ICP against a point cloud | 3D `.pcd` **+** a matching 2D grid | Light — no Open3D, no PGO at runtime |
+| `pepper_nav2_fastloc.launch.py` | `fastlio_localization`, prior map loaded into the iEKF's ikd-Tree | keyframe `pose.json` + clouds **+** a matching 2D grid | Light — no Open3D, no PGO at runtime |
 | `pepper_nav2_rtabmap_loc.launch.py` | RTAB-Map localization mode (ICP + appearance) | RTAB-Map `.db` | Heaviest; also needs RGB |
 
 `pepper_navigation.launch.py` is the legacy fourth path — AMCL on naoqi's wheel
@@ -169,15 +169,16 @@ ros2 launch pepper_navigation pepper_nav2_amcl.launch.py \
     scan_min_height:=0.30 scan_max_height:=1.20
 ```
 
-### Option 2: FAST-LIO + lio_localization (prior `.pcd`)
+### Option 2: FAST-LIO + fastlio_localization (prior keyframe map)
 
-The lightest localization stack — 3D ICP against a saved cloud, no Open3D, no
-PGO at runtime, which matters on the Jetson CPU budget:
+The lightest localization stack — the prior map is loaded straight into the
+ikd-Tree the iEKF registers against, so the map constrains the estimate at scan
+rate with no separate correction node, no Open3D and no PGO at runtime, which
+matters on the Jetson CPU budget. ScanContext finds the initial pose, so no
+`/initialpose` is needed:
 
 ```bash
-ros2 launch pepper_navigation pepper_nav2_fastlio_loc.launch.py \
-    map_pcd:=/home/yoha/Lidar/run_l2_lc/pgo_output/map_batch.pcd \
-    map:=/home/yoha/maps/pepper_clean.yaml
+ros2 launch pepper_navigation pepper_nav2_fastloc.launch.py
 ```
 
 It needs **both** maps of the same environment: the `.pcd` that ICP registers
@@ -227,7 +228,7 @@ odometry frame and the global costmap lives in `map`:
 | Stack | `map → odom` | `odom → base_footprint` | Local costmap frame |
 |-------|--------------|-------------------------|---------------------|
 | `pepper_nav2_amcl` | `amcl` | `lio_odom_bridge` (FAST-LIO) | `odom` |
-| `pepper_nav2_fastlio_loc` | `transform_fusion` | `lio_odom_bridge` | `odom` |
+| `pepper_nav2_fastloc` | `fastlio_localization` (publishes `map → base_footprint`; no `odom` edge) | — | `map` |
 | `pepper_nav2_rtabmap_loc` | `rtabmap` (to `odom`) | `lio_odom_bridge` | `odom` |
 | `pepper_navigation` (legacy) | `amcl` | `naoqi_driver2` (`pepper_odom`) | `pepper_odom` |
 
@@ -369,14 +370,14 @@ pepper_navigation/
 ├── config/
 │   ├── nav2_params.yaml                      # Nav2 stack parameters (AMCL + static map, wheel odom)
 │   ├── nav2_params_amcl.yaml                 # Nav2 params for AMCL on FAST-LIO odom
-│   ├── nav2_params_fastlio_loc.yaml          # Nav2 params for the lio_localization (ICP) stack
+│   ├── nav2_params_fastloc.yaml              # Nav2 params for the fastlio_localization stack
 │   ├── nav2_params_rtabmap_loc.yaml          # Nav2 params for the RTAB-Map localization stack
 │   ├── ekf_nav.yaml                          # robot_localization EKF parameters (not yet launched)
 │   └── README.md
 ├── launch/
 │   ├── pepper_navigation.launch.py           # Nav2 + AMCL against a static map
 │   ├── pepper_nav2_amcl.launch.py            # Nav2 + AMCL on FAST-LIO odom (localization baseline)
-│   ├── pepper_nav2_fastlio_loc.launch.py     # Nav2 + FAST-LIO + lio_localization (prior .pcd)
+│   ├── pepper_nav2_fastloc.launch.py         # Nav2 + fastlio_localization (prior map in the iEKF)
 │   ├── pepper_nav2_rtabmap_loc.launch.py     # Nav2 + FAST-LIO + RTAB-Map localization (.db)
 │   └── odom_test.launch.py
 ├── map/
@@ -393,7 +394,7 @@ pepper_navigation/
 │                                  # (not a ROS2 node - run manually with python3)
 ├── rviz/
 │   ├── nav2_amcl.rviz            # AMCL stack: map, particle cloud, /scan, costmaps, zones
-│   ├── nav2_fastlio_loc.rviz     # ICP stack: map, costmaps, plans, safety zones
+│   ├── nav2_fastloc.rviz         # fastloc stack: map, costmaps, plans, safety zones
 │   └── odometry_test.rviz
 ├── package.xml
 └── README.md
@@ -429,7 +430,7 @@ The navigation stack integrates four main subsystems:
 3. **Localization Layer** — three interchangeable implementations, one interface
    (`map → odom` + a `/map` for the static layer):
    - **AMCL** over a flattened `/scan`, on FAST-LIO odometry
-   - **`lio_localization`**, 3D ICP against a prior `.pcd`
+   - **`fastlio_localization`**, the prior map registered inside FAST-LIO's iEKF
    - **RTAB-Map** in localization mode against a `.db`, which also publishes `/map`
    - `ekf_nav.yaml` configures `robot_localization`'s `ekf_node` to fuse
      `/pepper_odom_filtered` (and, once wired in, a LIO odometry source) -

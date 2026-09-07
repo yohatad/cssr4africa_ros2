@@ -53,7 +53,7 @@ are upstream defaults for other lidars). Pass `use_sim_time:=true` for bag repla
 Odometry alone has no drift correction. RTAB-Map on top is the validated mapping
 configuration (best measured closure 0.19 m). PGO adds pose-graph loop closure
 plus a ray-traced `/projected_map`. Prior-map ICP is the lightest runtime stack,
-wrapped for Nav2 by `pepper_nav2_fastlio_loc.launch.py`.
+wrapped for Nav2 by `pepper_nav2_fastloc.launch.py`.
 
 **`bridge_level_frame` is the one that bites.** FAST-LIO publishes in the raw
 initial-IMU frame — the L2 IMU reads gravity along +X, so `odom` looks tilted

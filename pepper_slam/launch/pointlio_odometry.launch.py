@@ -109,7 +109,7 @@ def generate_launch_description():
     # PGO/AMCL is running.
     #
     # MUST be false when something else owns map -> odom (pgo_map_odom_bridge,
-    # AMCL, or lio_localization's transform_fusion) -- two publishers would give
+    # AMCL, or fastlio_localization) -- two publishers would give
     # odom two parents and split the tree.
     map_identity = Node(
         package='tf2_ros',

@@ -1,37 +1,24 @@
-# Nav2 bringup for Pepper on fastlio_localization (FAST-LIO + prior map in the
-# filter). The alternative to pepper_nav2_fastlio_loc.launch.py, which uses
-# lio_localization; both are kept, this one is the newer stack.
+# Nav2 bringup for Pepper on fastlio_localization (FAST-LIO + prior map loaded
+# into the iEKF, so the map constrains the estimate at scan rate from inside
+# the filter). Owns map -> base_footprint; nav2_map_server serves the matching
+# 2D grid as /map for the global costmap.
 #
-#   * fastlio_localization (FAST_LIO): loads the prior map INTO the ikd-Tree the
-#     iEKF registers against, so the map constrains the estimate at scan rate
-#     from inside the filter. Owns map -> base_footprint.
-#   * nav2_map_server: serves the matching 2D grid as /map for the global
-#     costmap's static layer.
-#
-# WHY, over lio_localization: that stack measures the map constraint OUTSIDE the
-# filter and applies it as a discrete map->odom step. MEASURED on
-# slam_20260823_aligned: 383 correction attempts, 223 rejected by its innovation
-# gate, 100 forced through by the 3-strike escape hatch, largest 49.72 m, and
-# growing over the run -- it diverged rather than settled. This stack has no
-# correction to jump: 0 steps over 0.30 m, 4.5 cm maximum, same bag.
+# Replaced lio_localization (github.com/yohatad/lio_localization), which
+# applied the map constraint as a discrete, outside-the-filter map->odom step
+# and produced jumps; this stack has no such step to jump.
 #
 # FRAMES.  map --(fastlio_localization)--> base_footprint
 #              --(pepper_sensor_tf / bag tf_static)--> l2lidar_frame_imu, cams
 #
-# There is NO odom frame, and that is not an oversight: after the handover the
-# filter state IS the map pose, so no separate odometry estimate exists, and
-# nothing else publishes one (the bag's /tf is the robot's joint tree rooted at
-# base_footprint; wheel odometry is a topic, /pepper_odom, not a TF edge). The
-# local costmap therefore rolls in 'map' -- see the note at local_costmap
-# global_frame in config/nav2_params_fastloc.yaml. transform_fusion and
-# lio_odom_bridge do NOT run here; adding them would give base_footprint two
-# parents.
+# No odom frame: after handover the filter state IS the map pose, so the local
+# costmap rolls in 'map' (see local_costmap global_frame in
+# config/nav2_params_fastloc.yaml). Don't add transform_fusion/lio_odom_bridge
+# here -- base_footprint would get two parents.
 #
-# Usage (real robot) -- defaults are a matched set from one mapping run:
+# Usage (real robot):
 #   ros2 launch pepper_navigation pepper_nav2_fastloc.launch.py
-#   No initial pose needed: ScanContext finds it. Call /relocalize if it is ever
-#   lost. Initialization requires the robot to MOVE ~0.5 m (init_require_motion),
-#   because two estimates taken standing still are not independent evidence.
+#   No initial pose needed: ScanContext finds it. Call /relocalize if lost.
+#   Robot must MOVE ~0.5 m to initialize (init_require_motion).
 #
 # Usage (bag replay):
 #   ros2 launch pepper_navigation pepper_nav2_fastloc.launch.py use_sim_time:=true
@@ -64,18 +51,9 @@ def generate_launch_description():
     declare_use_sim_time_cmd = DeclareLaunchArgument(
         'use_sim_time', default_value='false',
         description='Use bag/simulation clock instead of wall time.')
-    # The rig transforms (base_footprint -> l2lidar_frame -> the RealSense
-    # chain) are IN the bag's /tf_static -- but all three of those messages sit
-    # at t=0.000 s, so `ros2 bag play --start-offset N` skips them entirely and
-    # they are never published. base_footprint and camera_imu_optical_frame then
-    # come up as separate TF roots, fastlio_localization cannot resolve the
-    # extrinsic it needs to compose map -> base_footprint, and nav2 waits
-    # forever for a map frame that will never arrive.
-    #
-    # Publishing the rig here makes playback position irrelevant, and is also
-    # what the live robot needs. Set sensor_tf:=none when playing a bag from the
-    # START, or the bag's own /tf_static and this will both publish the same
-    # edges and whichever lands last silently wins.
+    # Publishing the rig here makes playback position irrelevant (the bag's own
+    # /tf_static is skipped by --start-offset). Set sensor_tf:=none if playing
+    # from the START, to avoid both publishing the same edges.
     declare_sensor_tf_cmd = DeclareLaunchArgument(
         'sensor_tf', default_value='urdf', choices=['urdf', 'yaml', 'none'],
         description="Publish the sensor rig. 'urdf' also gives RViz a "
@@ -124,9 +102,9 @@ def generate_launch_description():
                     'for l2_rsimu.yaml, l2lidar_frame_imu for l2.yaml.')
     declare_rviz_config_cmd = DeclareLaunchArgument(
         'rviz_config',
-        default_value=os.path.join(pkg_share, 'rviz', 'nav2_fastlio_loc.rviz'),
+        default_value=os.path.join(pkg_share, 'rviz', 'nav2_fastloc.rviz'),
         description='RViz config. Default is the standard view; pass '
-                    'nav2_fastlio_loc_voxel.rviz for the 3D voxel-map view '
+                    'nav2_fastloc_voxel.rviz for the 3D voxel-map view '
                     '(needs the voxel marker converters this file launches, '
                     'and z_voxels <= 16 in the nav2 params).')
     declare_rviz_cmd = DeclareLaunchArgument(
@@ -134,25 +112,18 @@ def generate_launch_description():
         description='Open RViz2 pre-configured for this nav stack (map, costmaps, '
                     'plans, safety zones, 2D Pose Estimate / Nav2 Goal tools).')
 
-    # FAST-LIO (odometry, no PGO) + sensor TF + global_localization +
-    # transform_fusion. This owns odom -> base_footprint and map -> odom.
+    # Sensor TF + fastlio_localization (FAST_LIO), which loads the prior map
+    # INTO the ikd-Tree the iEKF registers against, so the map constrains the
+    # estimate inside the filter at scan rate rather than as a correction
+    # applied beside it. See the WHY note in the header.
+    #
     # GroupAction (scoped by default) is REQUIRED here: IncludeLaunchDescription
     # emits its launch_arguments as SetLaunchConfiguration into the CURRENT
     # context, so 'rviz': 'false' would otherwise overwrite this file's own
     # 'rviz' argument and silently suppress rviz_node below.
-    # fastlio_localization (FAST_LIO) instead of lio_localization.
-    #
-    # The difference that matters: lio_localization keeps FAST-LIO's own map and
-    # bolts a separate ICP node beside it, which emits a discrete map->odom
-    # correction every ~0.5 s. That correction is a step, and the step is the
-    # jump -- MEASURED on slam_20260823_aligned, 100 forced jumps up to 49.72 m,
-    # growing over the run. fastlio_localization loads the prior map INTO the
-    # ikd-Tree the iEKF registers against, so the constraint is applied inside
-    # the filter at scan rate and there is no correction to jump: 0 steps over
-    # 0.30 m, 4.5 cm maximum, over the same bag.
     #
     # It owns map -> base_footprint directly (publish.tf_child_frame), so
-    # neither transform_fusion nor lio_odom_bridge runs here. See the frames
+    # there is no odom edge and no separate correction node. See the frames
     # note in the header.
     sensor_tf = GroupAction([
         IncludeLaunchDescription(

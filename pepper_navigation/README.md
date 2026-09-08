@@ -156,8 +156,7 @@ ros2 launch naoqi_driver pepper_bringup.launch.py nao_ip:=<robot-ip>
 Then bring up one of the stacks below. Each opens RViz with the right config
 (`rviz:=false` to run headless). AMCL and RTAB-Map expect you to seed the pose
 with RViz's **2D Pose Estimate**; fastloc does not — ScanContext finds its own
-initial pose once the robot has driven ~0.5 m, and `/relocalize` re-arms that
-search if it is ever wrong.
+initial pose, and `/relocalize` re-arms that search if it is ever wrong.
 
 ### Option 1: AMCL on FAST-LIO odometry
 
@@ -199,10 +198,20 @@ map, lower `init_min_overlap` (default `0.70`) to accept a lock at startup, or
 `health_min_overlap` (default `0.45`) to stop the post-lock health check
 declaring itself lost mid-run.
 
-The robot must **move ~0.5 m** before a lock is accepted: this stack passes
-`init_require_motion:=true`, because two ScanContext estimates taken standing
-still can agree on the same wrong place (measured 41 m off in a corridor).
-Pass `init_require_motion:=false` only if you are seeding the pose by hand.
+A lock is accepted standing still. `init_require_motion` defaults to `false`
+here, so ScanContext can converge from a parked start — which is what keeps a
+stationary bag or an undriveable robot from stalling bringup entirely, since
+nothing publishes `map → base_footprint` until the lock and
+`wait_for_map_then_start` waits on exactly that.
+
+The cost is that two estimates taken standing still can agree on the same wrong
+place without ever being forced apart in space (measured 41 m off in a
+corridor). Pass `init_require_motion:=true` to require ~0.5 m of driving
+between them if you would rather fail to start than start in the wrong place —
+worth doing for unattended deployment, where nobody is watching the first lock.
+Either way the post-lock health check and `localization_watchdog` catch a wrong
+lock afterwards; the argument only decides whether one is caught *before* it is
+used.
 
 > `map_scan_dir` defaults to `pcd/sc_pcd_20260823/` — the keyframe clouds
 > `utils/pgo_to_scancontext_map.py` writes from a `fastlio_lc_pgo` run. They are

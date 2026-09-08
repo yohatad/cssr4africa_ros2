@@ -20,7 +20,8 @@
 # Usage (real robot):
 #   ros2 launch pepper_navigation pepper_nav2_pointloc.launch.py
 #   No initial pose needed: ScanContext finds it. Call /relocalize if lost.
-#   Robot must MOVE ~0.5 m to initialize (init_require_motion).
+#   A lock is accepted standing still; pass init_require_motion:=true to
+#   require ~0.5 m of motion first (see that argument).
 #
 # Usage (bag replay):
 #   ros2 launch pepper_navigation pepper_nav2_pointloc.launch.py use_sim_time:=true
@@ -104,20 +105,24 @@ def generate_launch_description():
         description='Frame the filter estimates, matching config_file. '
                     'camera_imu_optical_frame for l2lidar_rsimu.yaml, '
                     'l2lidar_frame_imu for l2lidar_node.yaml.')
-    # Passed explicitly because point_lio's localization_l2.launch.py defaults it
-    # OFF (it is bag-oriented, where a seeded /initialpose start does not need
-    # it) while this stack starts unattended with no seed. Without motion between
-    # the two agreeing ScanContext estimates, agreement is vacuous: two matches
-    # can agree on the SAME wrong place (MEASURED: 41 m off in a corridor).
-    # Must match pepper_nav2_fastloc.launch.py -- if the two profiles differ by
+    # Declared here so the knob is visible in --show-args at the nav level, and
+    # so this profile cannot drift from the fastloc one: if the two differ by
     # their initialisation guard as well as their backend, the byte-identical
     # nav2 params buy nothing, since a difference between them stops being
-    # attributable to the backend alone.
+    # attributable to the backend alone. Keep this value equal to
+    # pepper_nav2_fastloc.launch.py's.
+    #
+    # Left OFF for the reasons spelled out in that file: on, there is no pose at
+    # all until the robot drives ~0.5 m, which stalls bringup on a stationary
+    # start; off, the wrong-lock case it guards against is already covered
+    # downstream by the health check and localization_watchdog.
     declare_init_require_motion_cmd = DeclareLaunchArgument(
-        'init_require_motion', default_value='true',
+        'init_require_motion', default_value='false',
         description='Require init_motion_min (0.5 m) of motion between the '
                     'agreeing initial estimates before accepting a pose lock. '
-                    'Set false only when seeding the pose by hand.')
+                    'Off by default: a lock is available standing still. Set '
+                    'true to harden startup against a wrong lock, at the cost '
+                    'of no pose at all until the robot has driven ~0.5 m.')
     declare_rviz_config_cmd = DeclareLaunchArgument(
         'rviz_config',
         default_value=os.path.join(pkg_share, 'rviz', 'nav2_fastloc.rviz'),

@@ -18,7 +18,8 @@
 # Usage (real robot):
 #   ros2 launch pepper_navigation pepper_nav2_fastloc.launch.py
 #   No initial pose needed: ScanContext finds it. Call /relocalize if lost.
-#   Robot must MOVE ~0.5 m to initialize (init_require_motion).
+#   A lock is accepted standing still; pass init_require_motion:=true to
+#   require ~0.5 m of motion first (see that argument).
 #
 # Usage (bag replay):
 #   ros2 launch pepper_navigation pepper_nav2_fastloc.launch.py use_sim_time:=true
@@ -96,16 +97,26 @@ def generate_launch_description():
         'config_file', default_value='l2_rsimu.yaml',
         description='FAST-LIO config: l2_rsimu.yaml (RealSense IMU, matches the '
                     'prior map) or l2.yaml (the L2 s own).')
-    # Passed explicitly because localization_l2.launch.py defaults it OFF (it is
-    # bag-oriented, where a seeded /initialpose start does not need it) while
-    # this stack starts unattended with no seed. Without motion between the two
-    # agreeing ScanContext estimates, agreement is vacuous: two matches can
-    # agree on the SAME wrong place (MEASURED: 41 m off in a corridor).
+    # Declared here even though it matches localization_l2.launch.py's own
+    # default, so the knob is visible in --show-args at the nav level: it was
+    # previously set only inside the include, where this file's header promised
+    # motion was required and nothing was enforcing it.
+    #
+    # Left OFF deliberately. Turning it on trades one failure for another rather
+    # than removing one. Off, agreement between the two ScanContext estimates can
+    # be vacuous -- two matches can agree on the SAME wrong place without ever
+    # being forced apart in space (MEASURED: 41 m off in a corridor). On, there is
+    # no pose at all until the robot drives ~0.5 m, which stalls bringup entirely
+    # (wait_for_map_then_start never fires) on a stationary start or a bag that
+    # begins parked. The post-lock health check and localization_watchdog already
+    # cover the wrong-lock case downstream; nothing covers never starting.
     declare_init_require_motion_cmd = DeclareLaunchArgument(
-        'init_require_motion', default_value='true',
+        'init_require_motion', default_value='false',
         description='Require init_motion_min (0.5 m) of motion between the '
                     'agreeing initial estimates before accepting a pose lock. '
-                    'Set false only when seeding the pose by hand.')
+                    'Off by default: a lock is available standing still. Set '
+                    'true to harden startup against a wrong lock, at the cost '
+                    'of no pose at all until the robot has driven ~0.5 m.')
     declare_rviz_config_cmd = DeclareLaunchArgument(
         'rviz_config',
         default_value=os.path.join(pkg_share, 'rviz', 'nav2_fastloc.rviz'),

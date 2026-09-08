@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """One "I am lost, fix it" service that works whichever localization backend is running.
 
-The three Nav2 profiles each recover differently, so an operator switching
-between them has to remember three procedures:
+The Nav2 profiles each recover differently, so an operator switching between
+them would otherwise have to remember one procedure per backend:
 
   fastloc  -> /relocalize (std_srvs/Trigger), re-arms the ScanContext search
+  pointloc -> /relocalize as well: the Point-LIO localizer is a port of the
+              FAST-LIO one and exposes the same service
   amcl     -> /reinitialize_global_localization (std_srvs/Empty), scatters
               particles for a global re-draw
   rtabmap  -> no forced re-search exists; it relocalizes on its own via loop
               closure, so the only operator action is seeding /initialpose
 
-This exposes /localization_recover (Trigger) in front of all three and
+This exposes /localization_recover (Trigger) in front of all of them and
 dispatches to whatever is actually up. For rtabmap it reports honestly that
 there is nothing to call rather than pretending a no-op succeeded.
 """
@@ -29,6 +31,7 @@ AMCL_SRV = '/reinitialize_global_localization'
 class LocalizationRecovery(Node):
     def __init__(self):
         super().__init__('localization_recovery')
+        # 'auto' resolves from the graph; pin it per launch file when known.
         self.declare_parameter('backend', 'auto')
         self.declare_parameter('service_timeout', 5.0)
         self.backend = self.get_parameter('backend').value
@@ -72,7 +75,10 @@ class LocalizationRecovery(Node):
                 # Node vanished between listing and querying -- normal churn.
                 continue
         if FASTLOC_SRV in names:
-            return 'fastloc'
+            # fastloc and pointloc both serve /relocalize, so the service alone
+            # cannot tell them apart -- disambiguate by who is running.
+            live = {n for n, _ in self.get_node_names_and_namespaces()}
+            return 'pointloc' if 'point_lio_localization' in live else 'fastloc'
         if AMCL_SRV in names:
             return 'amcl'
         if any(n.startswith('/rtabmap') for n in names):
@@ -89,7 +95,7 @@ class LocalizationRecovery(Node):
     def recover(self, request, response):
         backend = self.backend if self.backend != 'auto' else self.detect_backend()
 
-        if backend == 'fastloc':
+        if backend in ('fastloc', 'pointloc'):
             if not self.fastloc_cli.wait_for_service(timeout_sec=self.timeout):
                 response.success = False
                 response.message = f'{FASTLOC_SRV} did not appear'
@@ -99,8 +105,10 @@ class LocalizationRecovery(Node):
                 response.success = False
                 response.message = f'{FASTLOC_SRV} timed out'
                 return response
+            node_name = ('pointlio_localization' if backend == 'pointloc'
+                         else 'fastlio_localization')
             response.success = result.success
-            response.message = f'fastlio_localization: {result.message}'
+            response.message = f'{node_name}: {result.message}'
 
         elif backend == 'amcl':
             if not self.amcl_cli.wait_for_service(timeout_sec=self.timeout):

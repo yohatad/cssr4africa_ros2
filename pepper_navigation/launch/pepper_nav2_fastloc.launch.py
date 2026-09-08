@@ -341,9 +341,12 @@ def generate_launch_description():
             'use_sim_time': use_sim_time,
             # OFF deliberately. local_costmap blocks configuring until a
             # transform to its global_frame (map) exists, and with this
-            # localizer that frame appears only after ScanContext locks --
-            # which requires the robot to MOVE, so the wait is unbounded and
-            # autostart stalls the whole bringup. wait_for_map_then_start
+            # localizer that frame appears only after ScanContext locks. That
+            # lock waits on the world, not the clock -- enough scan overlap
+            # with the prior map, and init_agree_count estimates agreeing on
+            # where it is -- so the wait is unbounded (longer still with
+            # init_require_motion:=true, which also needs ~0.5 m of driving)
+            # and autostart stalls the whole bringup. wait_for_map_then_start
             # calls STARTUP the moment the frame is up.
             'autostart': False,
             'bond_timeout': 4.0,

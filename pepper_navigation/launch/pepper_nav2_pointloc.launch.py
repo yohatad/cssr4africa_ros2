@@ -105,17 +105,6 @@ def generate_launch_description():
         description='Frame the filter estimates, matching config_file. '
                     'camera_imu_optical_frame for l2lidar_rsimu.yaml, '
                     'l2lidar_frame_imu for l2lidar_node.yaml.')
-    # Declared here so the knob is visible in --show-args at the nav level, and
-    # so this profile cannot drift from the fastloc one: if the two differ by
-    # their initialisation guard as well as their backend, the byte-identical
-    # nav2 params buy nothing, since a difference between them stops being
-    # attributable to the backend alone. Keep this value equal to
-    # pepper_nav2_fastloc.launch.py's.
-    #
-    # Left OFF for the reasons spelled out in that file: on, there is no pose at
-    # all until the robot drives ~0.5 m, which stalls bringup on a stationary
-    # start; off, the wrong-lock case it guards against is already covered
-    # downstream by the health check and localization_watchdog.
     declare_init_require_motion_cmd = DeclareLaunchArgument(
         'init_require_motion', default_value='false',
         description='Require init_motion_min (0.5 m) of motion between the '

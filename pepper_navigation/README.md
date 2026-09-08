@@ -156,7 +156,8 @@ ros2 launch naoqi_driver pepper_bringup.launch.py nao_ip:=<robot-ip>
 Then bring up one of the stacks below. Each opens RViz with the right config
 (`rviz:=false` to run headless). AMCL and RTAB-Map expect you to seed the pose
 with RViz's **2D Pose Estimate**; fastloc does not — ScanContext finds its own
-initial pose, and `/relocalize` re-arms that search if it is ever wrong.
+initial pose once the robot has driven ~0.5 m, and `/relocalize` re-arms that
+search if it is ever wrong.
 
 ### Option 1: AMCL on FAST-LIO odometry
 
@@ -190,14 +191,26 @@ matters on the Jetson CPU budget. ScanContext finds the initial pose, so no
 ros2 launch pepper_navigation pepper_nav2_fastloc.launch.py
 ```
 
-It needs **both** maps of the same environment: the `.pcd` that ICP registers
-against, and the 2D grid `map_server` publishes for the global costmap's static
-layer. Lower `localization_th` (default `0.90`) if the L2 scan only partly
-overlaps the prior map.
+It needs **both** maps of the same environment: the per-keyframe clouds and
+poses that ScanContext and the iEKF register against (`map_scan_dir` +
+`map_pose_file`), and the 2D grid `map_server` publishes for the global
+costmap's static layer (`map`). If the L2 scan only partly overlaps the prior
+map, lower `init_min_overlap` (default `0.70`) to accept a lock at startup, or
+`health_min_overlap` (default `0.45`) to stop the post-lock health check
+declaring itself lost mid-run.
 
-> The `map_pcd` default points at the loop-closed PGO output. That file is
-> produced by `fastlio_lc_pgo`'s batch re-optimization service — if it is
-> missing, re-run the mapping pipeline before using this stack.
+The robot must **move ~0.5 m** before a lock is accepted: this stack passes
+`init_require_motion:=true`, because two ScanContext estimates taken standing
+still can agree on the same wrong place (measured 41 m off in a corridor).
+Pass `init_require_motion:=false` only if you are seeding the pose by hand.
+
+> `map_scan_dir` defaults to `pcd/sc_pcd_20260823/` — the keyframe clouds
+> `utils/pgo_to_scancontext_map.py` writes from a `fastlio_lc_pgo` run. They are
+> gitignored (75 MB) and are **not in a fresh checkout**; copy them in first.
+> Without them `fastlio_localization` fails `on_configure` and exits, and
+> because nothing then publishes `map → base_footprint`,
+> `wait_for_map_then_start` never fires and the whole Nav2 bringup sits inactive
+> with no other symptom.
 
 ### Option 3: FAST-LIO + RTAB-Map localization (`.db`)
 

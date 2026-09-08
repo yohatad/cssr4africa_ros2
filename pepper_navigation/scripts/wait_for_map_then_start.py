@@ -4,8 +4,9 @@
 WHY. nav2 configures its costmaps at startup, and local_costmap blocks waiting
 for a transform to its global_frame. With fastlio_localization that frame does
 not exist yet: the node publishes map -> base_footprint only after ScanContext
-locks, and locking now requires the robot to MOVE (init_require_motion), so the
-wait is unbounded. Left to autostart, the bringup stalls with
+locks, and pepper_nav2_fastloc.launch.py runs it with init_require_motion:=true,
+so the lock waits on the robot driving ~0.5 m. That wait is unbounded. Left to
+autostart, the bringup stalls with
 
     Timed out waiting for transform from base_footprint to map to become
     available, tf error: Invalid frame ID "map" ... frame does not exist
